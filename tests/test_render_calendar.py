@@ -469,6 +469,105 @@ class TestRenderCalendar:
             img = render_to_image([w], self._config())
         assert_all_white(img, 0, h + 1, 400, h + 4)
 
+    # ── Several calendars in one list ───────────────────
+
+    def _svg(self, widget: dict[str, object]) -> str:
+        """Render one widget to SVG with today patched."""
+        with patch(_PATCH_NOW, wraps=dt.date) as mock_dt:
+            mock_dt.today.return_value = _TODAY
+            return render_widget_svg(widget, self._config())
+
+    def test_calendar_entity_list_merges_and_sorts(self) -> None:
+        # Events of all listed calendars appear, ordered by start
+        # regardless of the order the calendars were listed in.
+        svg = self._svg(
+            self._widget(entity=["calendar.future_only", "calendar.family"])
+        )
+        pos = [svg.index(t) for t in ("Doctor Appointment", "Team Meeting")]
+        assert "Future Event" in svg
+        assert pos[0] < pos[1]
+        # Team Meeting and Future Event share a start; both are listed
+        # after the earlier Doctor Appointment.
+        assert pos[0] < svg.index("Future Event")
+
+    def test_calendar_entity_list_caps_after_merge(self) -> None:
+        # max_events applies to the merged list, not per calendar.
+        svg = self._svg(
+            self._widget(
+                entity=["calendar.future_only", "calendar.family"],
+                max_events=1,
+            )
+        )
+        assert "Doctor Appointment" in svg
+        assert "Team Meeting" not in svg
+        assert "Future Event" not in svg
+
+    def test_calendar_entity_list_skips_unknown(self) -> None:
+        # An unknown entity in the list is ignored, the rest renders.
+        svg = self._svg(
+            self._widget(entity=["calendar.nope", "calendar.family"])
+        )
+        assert "Doctor Appointment" in svg
+
+    def test_calendar_source_label_prefixes_summary(self) -> None:
+        svg = self._svg(
+            self._widget(
+                entity=["calendar.family", "calendar.future_only"],
+                calendars={"calendar.family": {"label": "Alex"}},
+            )
+        )
+        assert "Alex: Doctor Appointment" in svg
+        assert "Alex: Future Event" not in svg
+
+    def test_calendar_source_letter_in_circle(self) -> None:
+        # A letter replaces the calendar glyph for that calendar's
+        # rows only; the other calendar keeps the glyph.
+        plain = self._svg(self._widget(entity="calendar.family"))
+        glyphs_plain = plain.count("<path")
+        svg = self._svg(
+            self._widget(
+                entity=["calendar.family", "calendar.future_only"],
+                calendars={"calendar.family": {"letter": "A"}},
+            )
+        )
+        assert ">A</text>" in svg
+        # Two family rows lost their glyph, one future row kept it.
+        assert svg.count("<path") == glyphs_plain - 2 + 1
+
+    def test_calendar_source_icon_wins_over_letter(self) -> None:
+        svg = self._svg(
+            self._widget(
+                entity="calendar.family",
+                calendars={
+                    "calendar.family": {"letter": "A", "icon": "mdi:account"}
+                },
+            )
+        )
+        assert ">A</text>" not in svg
+        # The glyph differs from the default calendar icon.
+        plain = self._svg(self._widget(entity="calendar.family"))
+        assert svg.count("<path") == plain.count("<path")
+        assert svg != plain
+
+    def test_calendar_source_unknown_icon_keeps_glyph(self) -> None:
+        # A misspelt icon name must not blank the row.
+        svg = self._svg(
+            self._widget(
+                entity="calendar.family",
+                calendars={"calendar.family": {"icon": "mdi:no-such-icon-x"}},
+            )
+        )
+        plain = self._svg(self._widget(entity="calendar.family"))
+        assert "Doctor Appointment" in svg
+        assert svg.count("<path") == plain.count("<path")
+
+    def test_calendar_single_entity_unchanged(self) -> None:
+        # A plain string entity renders exactly as before.
+        svg = self._svg(self._widget())
+        assert "Doctor Appointment" in svg
+        assert "Team Meeting" in svg
+        assert ": " not in svg.split("Doctor Appointment")[0][-6:]
+
     def test_calendar_icon_present(self) -> None:
         # Calendar icon (dark pixels) appears in the icon area.
         h = 56

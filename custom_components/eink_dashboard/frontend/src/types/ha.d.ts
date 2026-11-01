@@ -524,10 +524,25 @@ export interface WasteScheduleEntry {
  *
  * `fonts` roles: `title`, `primary`, `secondary`, `value`.
  */
+/** Per-calendar decoration of a calendar widget's rows. */
+export interface CalendarSource {
+  /** Short text drawn before the event summary (e.g. a name). */
+  label?: string;
+  /** Single character drawn in the row's circle instead of the glyph. */
+  letter?: string;
+  /** MDI icon drawn in the row's circle; wins over `letter`. */
+  icon?: string;
+}
+
 export interface CalendarWidget extends WidgetBase {
   type: "calendar";
-  /** HA calendar entity ID (e.g. "calendar.family"). */
-  entity?: string;
+  /**
+   * HA calendar entity ID (e.g. "calendar.family"), or a list of IDs
+   * whose events are merged and sorted by start.
+   */
+  entity?: string | string[];
+  /** Per-calendar label, letter or icon, keyed by entity ID. */
+  calendars?: Record<string, CalendarSource>;
   /** Optional card header text shown above the event list. */
   title?: string;
   /**

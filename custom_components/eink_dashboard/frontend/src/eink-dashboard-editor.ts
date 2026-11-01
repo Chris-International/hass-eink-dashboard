@@ -702,6 +702,45 @@ function colorSelector(defaultColor: number = 0): HaFormSchema {
  * @returns An expandable ha-form section with label and
  *   description.
  */
+/**
+ * Per-calendar decoration of a calendar widget's rows: one
+ * expandable section per selected calendar with `label` (text drawn
+ * before the summary), `letter` (one character in the row's circle)
+ * and `icon` (MDI icon in the circle).  `flatten` is unset on both
+ * levels, so the form writes `calendars[entity_id] = {...}`, which is
+ * how the backend looks a row's source up.
+ *
+ * @param w - Current widget data; only `entity` is read.
+ * @returns A single-entry schema list, or `[]` without calendars.
+ */
+function calendarSourcesSection(
+  w?: Record<string, unknown>,
+): HaFormSchema[] {
+  const raw = w?.entity;
+  const ids = (Array.isArray(raw) ? raw : [raw]).filter(
+    (e): e is string => typeof e === "string" && e !== "",
+  );
+  if (ids.length === 0) return [];
+  return [
+    {
+      name: "calendars",
+      type: "expandable",
+      title: "Per calendar",
+      icon: "mdi:account-multiple",
+      schema: ids.map((id) => ({
+        name: id,
+        type: "expandable",
+        title: id,
+        schema: [
+          { name: "label", selector: { text: {} } },
+          { name: "letter", selector: { text: {} } },
+          { name: "icon", selector: { icon: {} } },
+        ],
+      })),
+    },
+  ];
+}
+
 function identitySection(): HaFormSchema {
   return {
     name: "identity",
@@ -718,7 +757,7 @@ function identitySection(): HaFormSchema {
 
 export const SCHEMAS: Record<
   string,
-  (d: DisplayConfig) => HaFormSchema[]
+  (d: DisplayConfig, w?: Record<string, unknown>) => HaFormSchema[]
 > = {
   frame: (d) => [
     identitySection(),
@@ -1446,7 +1485,7 @@ export const SCHEMAS: Record<
       ],
     },
   ],
-  calendar: (d) => [
+  calendar: (d, w) => [
     identitySection(),
     {
       name: "content",
@@ -1459,7 +1498,7 @@ export const SCHEMAS: Record<
         {
           name: "entity",
           required: true,
-          selector: { entity: { domain: "calendar" } },
+          selector: { entity: { domain: "calendar", multiple: true } },
         },
         { name: "title", selector: { text: {} } },
         {
@@ -1478,6 +1517,7 @@ export const SCHEMAS: Record<
         },
       ],
     },
+    ...calendarSourcesSection(w),
     {
       name: "layout_pos",
       type: "expandable",
@@ -2049,6 +2089,10 @@ export const SCHEMAS: Record<
 };
 
 export const HELPERS: Record<string, string> = {
+  calendars:
+    "Label, letter or icon shown on the rows of each calendar"
+    + " (text before the summary; one character or an icon in the circle).",
+  letter: "One character drawn in the row's circle when no icon is set.",
   row_height:
     "Rows never grow taller than this; extra widget height stays "
     + "empty below the list.  Leave empty to use the display's "
@@ -2079,6 +2123,8 @@ export const HELPERS: Record<string, string> = {
 };
 
 export const LABELS: Record<string, string> = {
+  calendars: "Per calendar",
+  letter: "Letter",
   label: "Label",
   description: "Description",
   entity: "Entity",
@@ -2844,12 +2890,23 @@ class EinkDashboardEditor extends HTMLElement {
     if ("color" in formData && formData.color !== undefined) {
       formData.color = String(formData.color);
     }
+    // The calendar widget's entity picker is multi-select; a widget
+    // saved with a single ID still has to show up as selected.
+    if (
+      widget.type === "calendar"
+      && typeof formData.entity === "string"
+      && formData.entity
+    ) {
+      formData.entity = [formData.entity];
+    }
 
     const form =
       document.createElement("ha-form") as unknown as HaFormElement;
     form.hass = this._hass;
     form.data = formData;
-    form.schema = schemaFn(this._display);
+    form.schema = schemaFn(
+      this._display, widget as unknown as Record<string, unknown>,
+    );
     form.computeLabel = (s) => LABELS[s.name] || s.name;
     form.computeHelper = (s) => HELPERS[s.name] || "";
     form.addEventListener(
@@ -2901,6 +2958,10 @@ class EinkDashboardEditor extends HTMLElement {
         this._widgets[index] = data as unknown as Widget;
         this._fireWidgetChange();
         this._updateSummary(index);
+        // The per-calendar sections follow the selected calendars.
+        if (widget.type === "calendar" && data.entity !== prevEntity) {
+          form.schema = schemaFn(this._display, data);
+        }
         // Refresh entries pick-list when entity changes
         if (
           widget.type === "waste_schedule"

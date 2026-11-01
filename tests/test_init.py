@@ -709,6 +709,38 @@ class TestCalendarFetchers:
         assert "events" in attrs
         assert "week_events" not in attrs
 
+    async def test_calendar_fetcher_accepts_entity_list(self) -> None:
+        # A calendar widget listing several calendars gets each of
+        # them fetched once, with the widget's days_ahead.
+        hass = MagicMock()
+        hass.services.async_call = AsyncMock(
+            side_effect=lambda *_a, **_k: {
+                "calendar.home": {"events": []},
+                "calendar.work": {"events": []},
+            }
+        )
+        states = {
+            "calendar.home": {"state": "off", "attributes": {}},
+            "calendar.work": {"state": "off", "attributes": {}},
+        }
+        widgets = [
+            {
+                "type": "calendar",
+                "entity": ["calendar.home", "calendar.work", "calendar.home"],
+            }
+        ]
+
+        await _fetch_calendar_events(hass, widgets, states)
+
+        assert hass.services.async_call.await_count == 2
+        called = {
+            c.args[2]["entity_id"]
+            for c in hass.services.async_call.await_args_list
+        }
+        assert called == {"calendar.home", "calendar.work"}
+        assert "events" in states["calendar.home"]["attributes"]
+        assert "events" in states["calendar.work"]["attributes"]
+
     async def test_week_fetcher_ignores_calendar_widgets(self) -> None:
         # The week fetcher only serves week calendar widgets; a calendar
         # widget causes no call and no events.

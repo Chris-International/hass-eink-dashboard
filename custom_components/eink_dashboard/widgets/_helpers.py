@@ -30,6 +30,7 @@ import contextlib
 import datetime
 import functools
 import zoneinfo
+from collections.abc import Mapping
 from dataclasses import dataclass
 from dataclasses import fields as dc_fields
 from itertools import pairwise
@@ -204,6 +205,22 @@ class CardRow:
     letter: str = ""
     secondary_fill: str = _HEX_BLACK
     value_fill: str = _HEX_BLACK
+
+
+def _entity_ids(widget: Mapping[str, object]) -> list[str]:
+    """Return the entity IDs a list-style calendar widget shows.
+
+    Args:
+        widget: Widget config whose ``entity`` is one entity ID or a
+            list of entity IDs.
+
+    Returns:
+        The non-empty entity IDs in configured order, without
+        duplicates.
+    """
+    raw = widget.get("entity", "")
+    items = raw if isinstance(raw, list) else [raw]
+    return list(dict.fromkeys(str(e) for e in items if e))
 
 
 def _row_context(row: CardRow) -> dict[str, object]:

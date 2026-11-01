@@ -540,11 +540,31 @@ class WasteScheduleWidget(WidgetBase, ListFields, total=False):
     """Suppress the row icons."""
 
 
+class CalendarSource(TypedDict, total=False):
+    """Per-calendar decoration of a calendar widget's rows.
+
+    Keyed by calendar entity ID in ``CalendarWidget.calendars``.  Each
+    key is optional; an absent key keeps the widget's default.
+    """
+
+    label: str
+    """Short text drawn before the event summary (e.g. a name)."""
+    letter: str
+    """Single character drawn in the row's circle instead of the
+    calendar glyph."""
+    icon: str
+    """MDI icon name (with or without ``mdi:``) drawn in the row's
+    circle; wins over ``letter``."""
+
+
 class CalendarWidget(WidgetBase, ListFields, total=False):
     """Calendar widget config."""
 
-    entity: str
-    """Calendar entity ID."""
+    entity: str | list[str]
+    """Calendar entity ID, or a list of IDs whose events are merged
+    and sorted by start."""
+    calendars: dict[str, CalendarSource]
+    """Per-calendar label, letter or icon, keyed by entity ID."""
     max_events: int
     """Maximum number of events to list."""
     days_ahead: int

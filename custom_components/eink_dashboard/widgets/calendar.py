@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -36,6 +37,7 @@ from ._helpers import (
     _card_insets,
     _color_context,
     _divider_stroke_width,
+    _entity_ids,
     _icon_stroke_width,
     _list_row_height,
     _max_row_height,
@@ -59,8 +61,17 @@ def _build_calendar_context(
     Rows never grow beyond ``row_height``; extra widget height
     is left blank below them.
     Events are sourced from
-    ``states[entity_id]["attributes"]["events"]``, which is
-    injected by ``_fetch_calendar_events()`` before rendering.
+    ``states[entity_id]["attributes"]["events"]`` of every calendar
+    in ``entity``, which is injected by ``_fetch_calendar_events()``
+    before rendering; several calendars are merged and sorted by
+    start before the list is capped at ``max_events``.
+
+    Each row can show where its event came from: ``calendars`` maps
+    a calendar entity ID to a ``label`` (text drawn before the
+    summary), a ``letter`` (one character drawn in the row's circle)
+    or an ``icon`` (MDI name drawn in the circle; wins over the
+    letter).  Calendars without an entry keep the plain summary and
+    the calendar glyph.
 
     Icon urgency rules:
 
@@ -74,7 +85,9 @@ def _build_calendar_context(
 
     Args:
         widget: Widget config dict.  Recognised keys:
-            ``entity`` (calendar entity ID),
+            ``entity`` (calendar entity ID or list of IDs),
+            ``calendars`` (mapping of entity ID to ``{"label": str,
+            "letter": str, "icon": str}``, all keys optional),
             ``max_events`` (int, default 5),
             ``title`` (optional header string),
             ``fonts`` (per-role font overrides — a mapping of role
@@ -102,8 +115,8 @@ def _build_calendar_context(
     Returns:
         Template context dict consumed by
         ``calendar.svg.j2``.  Returns
-        ``{"w": …, "h": …, "has_rows": False}`` when the
-        entity is absent, events list is empty, or no events
+        ``{"w": …, "h": …, "has_rows": False}`` when no
+        entity is configured, no calendar has events, or no events
         remain after capping at ``max_events``.
     """
     from ..render import (
@@ -119,7 +132,7 @@ def _build_calendar_context(
     x = widget.get("x", PADDING)
     svg_w = _widget_dim(widget, "w", config["width"] - x)
 
-    entity_id: str = widget.get("entity", "")
+    entity_ids = _entity_ids(widget)
     max_events: int = int(widget.get("max_events", 5))
     card_style = widget.get("card_style", DEFAULT_CARD_STYLE)
     title: str = widget.get("title", "")
@@ -138,20 +151,38 @@ def _build_calendar_context(
         **_color_context(),
     }
 
-    if not entity_id:
+    if not entity_ids:
         return empty_ctx
 
-    entity_state = states.get(entity_id)
-    if entity_state is None:
+    raw_sources = widget.get("calendars", {})
+    sources: dict[str, Mapping[str, object]] = (
+        {str(k): v for k, v in raw_sources.items() if isinstance(v, Mapping)}
+        if isinstance(raw_sources, Mapping)
+        else {}
+    )
+
+    # (source entity ID, event) for every calendar in ``entity``.
+    merged: list[tuple[str, dict[str, object]]] = []
+    for eid in entity_ids:
+        entity_state = states.get(eid)
+        if entity_state is None:
+            continue
+        attrs = entity_state.get("attributes", {})
+        raw_events = attrs.get("events", [])
+        if not isinstance(raw_events, list):
+            continue
+        merged.extend(
+            (eid, event) for event in raw_events if isinstance(event, dict)
+        )
+
+    if not merged:
         return empty_ctx
 
-    attrs = entity_state.get("attributes", {})
-    raw_events: list[dict[str, object]] = attrs.get("events", [])
-
-    if not raw_events:
-        return empty_ctx
-
-    visible = list(raw_events[:max_events])
+    # Same key as the fetcher: ISO strings sort chronologically, and
+    # an all-day ``YYYY-MM-DD`` sorts before timed events of its day.
+    # A single calendar arrives sorted already; sorting is stable.
+    merged.sort(key=lambda item: str(item[1].get("start", "")))
+    visible = merged[:max_events]
     if not visible:
         return empty_ctx
 
@@ -223,17 +254,41 @@ def _build_calendar_context(
         scale=font_scale,
     )
 
-    # Build the calendar icon once; all rows share the same glyph.
-    icon_svg = _mdi_svg_filter("calendar", m.icon_inner)
+    # Build the default calendar glyph once; rows of calendars with
+    # their own icon get that icon, resolved once per icon name.
+    default_icon_svg = _mdi_svg_filter("calendar", m.icon_inner)
+    icon_cache: dict[str, str] = {}
+
+    def source_icon(eid: str) -> str:
+        """Return the SVG of ``eid``'s configured icon, or ``""``."""
+        name = str(sources.get(eid, {}).get("icon", "") or "")
+        name = name.removeprefix("mdi:").strip()
+        if not name:
+            return ""
+        if name not in icon_cache:
+            try:
+                icon_cache[name] = _mdi_svg_filter(name, m.icon_inner)
+            except (FileNotFoundError, ValueError):
+                # An unknown icon name must not blank the row; keep
+                # the calendar glyph so the event stays readable.
+                icon_cache[name] = default_icon_svg
+        return icon_cache[name]
 
     rows: list[dict[str, object]] = []
-    for i, event in enumerate(visible):
+    for i, (eid, event) in enumerate(visible):
+        source = sources.get(eid, {})
+        label = str(source.get("label", "") or "").strip()
+        letter = str(source.get("letter", "") or "").strip()[:1]
+        icon_svg = source_icon(eid)
+        if not icon_svg and not letter:
+            icon_svg = default_icon_svg
+
         start = str(event.get("start", ""))
         end = str(event.get("end", ""))
         summary = str(event.get("summary", ""))
         all_day = bool(event.get("all_day", False))
 
-        label = _format_calendar_label(
+        when = _format_calendar_label(
             start, all_day, today, time_format, language
         )
         is_now = _is_event_now(start, end, now)
@@ -252,11 +307,12 @@ def _build_calendar_context(
             _row_context(
                 CardRow(
                     y=content_y + i * row_h,
-                    primary=summary,
-                    value=label,
+                    primary=f"{label}: {summary}" if label else summary,
+                    value=when,
                     icon_svg=icon_svg,
                     icon_outline=use_outline,
                     icon_fill=icon_fill,
+                    letter=letter,
                     secondary_fill=color_to_hex(COLOR_GRAY),
                     value_fill=value_fill,
                 )

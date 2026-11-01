@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Calendar widget**: several calendars in one list. `entity` takes a
+  list of calendar entities whose events are merged and sorted by
+  start, and a *Per calendar* section gives each calendar a label
+  (text before the summary), a letter or an icon shown in the row's
+  circle, so a family list tells whose appointment each row is.
+
 ## [0.9.0] - 2026-10-29
 
 ### Added

@@ -79,6 +79,7 @@ from .data import (
 from .http import EinkLayoutView, EinkPublicImageView
 from .store import EinkDashboardStore
 from .svg_render import render_widget_svg
+from .widgets._helpers import _entity_ids
 from .widgets.week_calendar import week_calendar_entity_ids
 
 _LOGGER = logging.getLogger(__name__)
@@ -844,7 +845,8 @@ async def _fetch_calendar_events(
     """Fetch upcoming events for calendar widgets and inject into states.
 
     Calls the ``calendar.get_events`` service for each unique calendar
-    entity referenced by ``widgets`` and writes the event list into
+    entity referenced by ``widgets`` (a widget's ``entity`` may be one
+    ID or a list of IDs) and writes the event list into
     ``states[entity_id]["attributes"]["events"]`` so the widget
     context builder can access multiple events without real-time HA
     access at render time.
@@ -862,10 +864,13 @@ async def _fetch_calendar_events(
     """
     calendar_entities: dict[str, int] = {}
     for w in widgets:
-        if w.get("type") == WidgetType.CALENDAR:
-            eid = w.get("entity", "")
-            if not eid:
-                continue
+        if w.get("type") != WidgetType.CALENDAR:
+            continue
+        try:
+            days = max(1, int(w.get("days_ahead", 7)))
+        except (ValueError, TypeError):
+            days = 7
+        for eid in _entity_ids(w):
             if eid not in states:
                 _LOGGER.warning(
                     "Calendar entity %r is not in the states snapshot; "
@@ -874,10 +879,6 @@ async def _fetch_calendar_events(
                     eid,
                 )
                 continue
-            try:
-                days = max(1, int(w.get("days_ahead", 7)))
-            except (ValueError, TypeError):
-                days = 7
             if days > calendar_entities.get(eid, 0):
                 calendar_entities[eid] = days
 

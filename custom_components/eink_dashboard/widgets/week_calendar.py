@@ -27,6 +27,7 @@ from babel import Locale, UnknownLocaleError
 from ..const import COLOR_LIGHT_GRAY, FontWeight, color_to_hex
 from ._helpers import (
     _color_context,
+    _entity_ids,
     _resolve_tz,
     _title_layout,
     _widget_dim,
@@ -218,9 +219,7 @@ def week_calendar_entity_ids(widget: Mapping[str, object]) -> list[str]:
         The non-empty entity IDs in configured order, without
         duplicates.
     """
-    raw = widget.get("entity", "")
-    items = raw if isinstance(raw, list) else [raw]
-    return list(dict.fromkeys(str(e) for e in items if e))
+    return _entity_ids(widget)
 
 
 def _to_naive(raw: object) -> datetime | None:

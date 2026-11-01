@@ -179,7 +179,7 @@ The component ships a WYSIWYG Lovelace card for editing the dashboard layout.
 | Graph | Time-series line or bar chart for one or more numeric entities |
 | Gauge | Arc-style gauge for a single numeric entity |
 | Weather | Current conditions + N-day forecast with icons |
-| Calendar | Upcoming events from a Home Assistant calendar entity |
+| Calendar | Upcoming events from one or more Home Assistant calendar entities, merged and sorted by start; each calendar can mark its rows with a label before the summary, a letter or an icon in the row's circle |
 | Week calendar | Weekly grid (one column per day, 8:00–20:00 by default) of a calendar entity's events for the current week; the first column follows the first-weekday setting. A widget too short for the grid lists each day's events instead |
 | Device Battery | Battery level indicator for a device |
 | Frame | Decorative rounded-corner box for visual grouping |

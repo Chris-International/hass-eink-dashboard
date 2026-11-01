@@ -166,6 +166,47 @@ describe("SCHEMAS", () => {
     expect(yField?.selector?.number?.max).toBe(DISPLAY.height);
   });
 
+  it("calendar entity field is a multi-select of calendars", () => {
+    const entityField = findField(SCHEMAS.calendar(DISPLAY), "entity");
+    expect(entityField?.selector?.entity).toMatchObject({
+      domain: "calendar",
+      multiple: true,
+    });
+  });
+
+  it("calendar schema adds one per-calendar section per entity", () => {
+    // Without a widget (or without entities) there is no section.
+    expect(findField(SCHEMAS.calendar(DISPLAY), "calendars")).toBeUndefined();
+    expect(
+      findField(SCHEMAS.calendar(DISPLAY, { entity: [] }), "calendars"),
+    ).toBeUndefined();
+    // A single string entity still gets its section.
+    const one = findField(
+      SCHEMAS.calendar(DISPLAY, { entity: "calendar.alex" }), "calendars",
+    );
+    expect(one?.schema?.map((f) => f.name)).toEqual(["calendar.alex"]);
+    // A list gets one nested section per entity, each with the three
+    // decoration fields, nested (not flattened) under the entity ID.
+    const many = findField(
+      SCHEMAS.calendar(DISPLAY, {
+        entity: ["calendar.alex", "calendar.lara"],
+      }),
+      "calendars",
+    );
+    expect(many?.flatten).toBeUndefined();
+    expect(many?.schema?.map((f) => f.name)).toEqual([
+      "calendar.alex",
+      "calendar.lara",
+    ]);
+    const alex = many?.schema?.[0];
+    expect(alex?.flatten).toBeUndefined();
+    expect(alex?.schema?.map((f) => f.name)).toEqual([
+      "label",
+      "letter",
+      "icon",
+    ]);
+  });
+
   it("waste_schedule entity field uses domain filter 'sensor'", () => {
     // Waste schedule uses a single entity selector, not multiple.
     const entityField = findField(
